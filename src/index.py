@@ -5,9 +5,9 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import time, re
+import datetime
 
-
-TIME_SET = 0.5
+TIME_SET = 0.01
 START_KING = 3 # 세종
 START_YEARS = 232 # 
 # START_YEARS = 282 # 
@@ -40,6 +40,19 @@ def scrape_page(driver):
     return {**convert_text(history), "content": content_all, "title": title}
 
 
+def retry_operation(operation, max_attempts=50, delay=TIME_SET):
+    """작업을 재시도하는 함수"""
+    time.sleep(TIME_SET * 10)
+    for attempt in range(max_attempts):
+        try:
+            return operation()
+        except Exception as e:
+            if attempt == max_attempts - 1:
+                raise e
+            print(f"오류 발생: {str(e)}. {attempt + 1}번째 재시도...")
+            time.sleep(delay)
+
+
 def main():
     # Chrome 드라이버 설치 및 설정
     driver = webdriver.Chrome()
@@ -49,68 +62,64 @@ def main():
     driver.get(url)
 
     # 웹사이트 로딩 대기
-    time.sleep(TIME_SET)  # 필요에 따라 시간 조정
+    time.sleep(TIME_SET)
 
     first_links = driver.find_elements(By.CSS_SELECTOR, "#m_cont_list a")  # 모든 <a> 태그 가져오기
     data = []
     print("@@ START CRAWLER @@")
-    try:
-        for index in range(len(first_links) - START_KING):
-        # for index in range(1):
-            data = []
-            currentData = {
-                "name": "",
-                "number": "",
-                "date": "",
-                "content": "",
-                "title": "",
-            }
-            print(f"- {index + START_KING}/{len(first_links)}번째 실록")
-            links_first = driver.find_elements(By.CSS_SELECTOR, "#m_cont_list a")  # 모든 <a> 태그 가져오기
-            links_first[index + START_KING].click()
-            time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-            second_links = driver.find_elements(By.CSS_SELECTOR, ".king_year2.clear2 ul.clear2 a")  # 모든 <a> 태그 가져오기
-            for index in range(len(second_links)- START_YEARS):
-            # for index in range(1):
-                print(f"-- {index + START_YEARS}/{len(second_links)}번째 권")
-                links_sec = driver.find_elements(By.CSS_SELECTOR, ".king_year2.clear2 ul.clear2 a")  # 모든 <a> 태그 가져오기
-                links_sec[index + START_YEARS].click()
-                time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-                thrid_links = driver.find_elements(By.CSS_SELECTOR, ".ins_list_main li a")  # 모든 <a> 태그 가져오기
-                for index in range(len(thrid_links)):
-                # for index in range(2):
-                    print(f"--- {index + 1}/{len(thrid_links)}번째 기사")
-                    links_trd = driver.find_elements(By.CSS_SELECTOR, ".ins_list_main li a")  # 모든 <a> 태그 가져오기
-                    links_trd[index].click()
-                    time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-                    result = scrape_page(driver)
-                    currentData = result
-                    data.append(result)
-                    driver.back()
-                    time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-                driver.back()
-                time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-            driver.back()
-            time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-        # 수집한 데이터를 JSON 형태로 저장
-        
-        with open(f'{currentData["name"]}.json', 'w', encoding='utf-8') as json_file:
-            json.dump(data, json_file, ensure_ascii=False, indent=4)
-        print(f'### {currentData["name"]}.json 저장 완료')
-        time.sleep(TIME_SET)  # 필요에 따라 시간 조정
+    for index in range(len(first_links) - START_KING):
+        data = []
+        currentData = {
+            "name": "",
+            "number": "",
+            "date": "",
+            "content": "",
+            "title": "",
+        }
+        print(f"- {index + START_KING}/{len(first_links)}번째 실록")
 
-    except:
-        print('@@ 에러 발생함 @@')
-        data.append({
-            "name" : currentData["name"],
-            "number" : currentData["number"],
-            "date" : "",
-            "content" : "",
-            "title" : "",
-        })
-        time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-        time.sleep(TIME_SET)  # 필요에 따라 시간 조정
-        time.sleep(TIME_SET)  # 필요에 따라 시간 조정
+        # 첫번째 링크 클릭 재시도
+        def click_first():
+            links = driver.find_elements(By.CSS_SELECTOR, "#m_cont_list a")
+            links[index + START_KING].click()
+        retry_operation(click_first)
+        time.sleep(TIME_SET)
+        second_links = driver.find_elements(By.CSS_SELECTOR, ".king_year2.clear2 ul.clear2 a")
+        for index in range(len(second_links)- START_YEARS):
+            print(f"-- {index + START_YEARS}/{len(second_links)}번째 권")
+            # 두번째 링크 클릭 재시도
+            def click_second():
+                links = driver.find_elements(By.CSS_SELECTOR, ".king_year2.clear2 ul.clear2 a")
+                links[index + START_YEARS].click()
+            retry_operation(click_second)
+            time.sleep(TIME_SET)
+            thrid_links = driver.find_elements(By.CSS_SELECTOR, ".ins_list_main li a")
+            for index in range(len(thrid_links)):
+                print(f"--- {index + 1}/{len(thrid_links)}번째 기사")
+                # 세번째 링크 클릭 재시도
+                def click_third():
+                    links = driver.find_elements(By.CSS_SELECTOR, ".ins_list_main li a")
+                    links[index].click()
+                retry_operation(click_third)
+                time.sleep(TIME_SET) 
+                # scrape_page 함수가 정상동작하지 않을 경우 재실행하는 로직
+                result = retry_operation(lambda: scrape_page(driver))
+                currentData = result
+                data.append(result)
+                driver.back()
+                time.sleep(TIME_SET)
+            driver.back()
+            time.sleep(TIME_SET)
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            with open(f'{currentData["name"]}_{currentData["number"]}_{timestamp}.json', 'w', encoding='utf-8') as json_file:
+                json.dump(data, json_file, ensure_ascii=False, indent=4)
+            data = []
+            print(f'### {currentData["name"]}_{currentData["number"]}_{timestamp}.json 저장 완료')
+            time.sleep(TIME_SET)
+        driver.back()
+        time.sleep(TIME_SET)
+    
+        
 
     # 수집한 데이터를 JSON 형태로 저장
     with open('error_data.json', 'w', encoding='utf-8') as json_file:
